@@ -59,10 +59,12 @@ let state = Arc::new(State {
     x: RwLock::new(1),
     y: RwLock::new(1),
 });
+
 let consumers: Vec<Arc<dyn Consumer<u64>>> = vec![
     Arc::new(MultiplyX::new(Arc::clone(&state))),
     Arc::new(MultiplyY::new(Arc::clone(&state))),
 ];
+
 stream::iter(1..=5).broadcast(100, consumers).await;
 assert_eq!(*state.x.read().unwrap(), 3125);
 assert_eq!(*state.y.read().unwrap(), 100000);
