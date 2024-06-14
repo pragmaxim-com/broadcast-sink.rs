@@ -43,7 +43,7 @@ pin_project! {
 impl<St, T> BroadcastSink<St, T>
 where
     St: Stream<Item = T>,
-    T: Clone + Send + Sync + 'static,
+    T: Send + Sync + 'static,
 {
     fn new(stream: St, capacity: usize, consumers: Vec<Arc<dyn Consumer<T>>>) -> Self {
         let (tx, _rx) = broadcast::channel::<Arc<St::Item>>(capacity);
@@ -105,14 +105,14 @@ where
 }
 
 pub trait StreamBroadcastSinkExt: Stream {
-    fn broadcast<T>(
+    fn broadcast(
         self,
         capacity: usize,
-        consumers: Vec<Arc<dyn Consumer<T>>>,
-    ) -> BroadcastSink<Self, T>
+        consumers: Vec<Arc<dyn Consumer<Self::Item>>>,
+    ) -> BroadcastSink<Self, Self::Item>
     where
-        Self: Sized + Stream<Item = T>,
-        T: Clone + Send + Sync + 'static,
+        Self: Sized,
+        <Self as Stream>::Item: Sync + Send + 'static,
     {
         BroadcastSink::new(self, capacity, consumers)
     }
