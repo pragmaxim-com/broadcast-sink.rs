@@ -60,12 +60,21 @@ let state = Arc::new(State {
     y: RwLock::new(1),
 });
 
-let consumers: Vec<Arc<dyn Consumer<u64>>> = vec![
-    Arc::new(MultiplyX::new(Arc::clone(&state))),
-    Arc::new(MultiplyY::new(Arc::clone(&state))),
-];
+let consumers = stream::iter(1..=5)
+    .broadcast(
+        100,
+        vec![
+            Arc::new(Mutex::new(MultiplyX::new(Arc::clone(&state)))),
+            Arc::new(Mutex::new(MultiplyY::new(Arc::clone(&state)))),
+        ],
+    )
+    .await;
 
-stream::iter(1..=5).broadcast(100, consumers).await;
 assert_eq!(*state.x.read().unwrap(), 3125);
 assert_eq!(*state.y.read().unwrap(), 100000);
+
+stream::iter(1..=5).broadcast(100, consumers).await;
+
+assert_eq!(*state.x.read().unwrap(), 9765625);
+assert_eq!(*state.y.read().unwrap(), 10000000000);
 ```

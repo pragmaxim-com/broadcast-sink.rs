@@ -14,16 +14,15 @@ use futures::ready;
 use futures::{Stream, StreamExt};
 use pin_project_lite::pin_project;
 use std::sync::Arc;
-use tokio::sync::{broadcast, Barrier};
+use tokio::sync::{broadcast, Barrier, Mutex};
 use tokio::task;
 use tokio_stream::wrappers::BroadcastStream;
 
 pub trait Consumer<T>: Send + Sync {
-    fn consume(&self, item: &T);
+    fn consume(&mut self, item: &T);
 }
 
 pin_project! {
-    #[derive(Debug)]
     #[must_use = "futures do nothing unless you `.await` or poll them"]
     pub struct BroadcastSink<St, T>
     where
@@ -34,7 +33,7 @@ pin_project! {
         #[pin]
         tx: broadcast::Sender<Arc<T>>,
         active_count: Arc<AtomicUsize>,
-        consumer_count: usize,
+        consumers: Vec<Arc<Mutex<dyn Consumer<T>>>>,
         #[pin]
         _pin: PhantomPinned,
     }
@@ -45,11 +44,12 @@ where
     St: Stream<Item = T>,
     T: Send + Sync + 'static,
 {
-    fn new(stream: St, capacity: usize, consumers: Vec<Arc<dyn Consumer<T>>>) -> Self {
+    fn new(stream: St, capacity: usize, consumers: Vec<Arc<Mutex<dyn Consumer<T>>>>) -> Self {
         let (tx, _rx) = broadcast::channel::<Arc<St::Item>>(capacity);
         let consumer_count = consumers.len();
         let barrier = Arc::new(Barrier::new(consumer_count));
         let active_count = Arc::new(AtomicUsize::new(0));
+        let cs = consumers.clone();
 
         for consumer in consumers.into_iter() {
             let barrier_clone = Arc::clone(&barrier);
@@ -59,6 +59,7 @@ where
             task::spawn(async move {
                 let mut stream = BroadcastStream::new(rx);
                 while let Some(Ok(item)) = stream.next().await {
+                    let mut consumer = consumer.lock().await;
                     consumer.consume(&item);
                     barrier_clone.wait().await;
                     active_count_clone.fetch_sub(1, Ordering::SeqCst);
@@ -69,7 +70,7 @@ where
             stream,
             tx,
             active_count,
-            consumer_count,
+            consumers: cs,
             _pin: PhantomPinned,
         }
     }
@@ -80,7 +81,7 @@ where
     St: Stream<Item = T>,
     T: Clone + Send + Sync + 'static,
 {
-    type Output = ();
+    type Output = Vec<Arc<Mutex<dyn Consumer<T>>>>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut me = self.project();
@@ -90,13 +91,13 @@ where
                 Some(item) => {
                     let next_arc = Arc::new(item);
                     me.active_count
-                        .fetch_add(*me.consumer_count, Ordering::SeqCst);
+                        .fetch_add(me.consumers.len(), Ordering::SeqCst);
                     let _ = me.tx.send(next_arc); // TODO handle error
                 }
                 None => {
                     let active_count = me.active_count.load(Ordering::SeqCst);
                     if active_count == 0 {
-                        return Poll::Ready(());
+                        return Poll::Ready(me.consumers.to_vec());
                     }
                 }
             };
@@ -108,7 +109,7 @@ pub trait StreamBroadcastSinkExt: Stream {
     fn broadcast(
         self,
         capacity: usize,
-        consumers: Vec<Arc<dyn Consumer<Self::Item>>>,
+        consumers: Vec<Arc<Mutex<dyn Consumer<Self::Item>>>>,
     ) -> BroadcastSink<Self, Self::Item>
     where
         Self: Sized,
@@ -143,7 +144,7 @@ mod tests {
     }
 
     impl Consumer<u64> for MultiplyX {
-        fn consume(&self, _: &u64) {
+        fn consume(&mut self, _: &u64) {
             let mut x = self.state.x.write().unwrap();
             *x *= 5;
             println!("Consumer X processed item");
@@ -161,7 +162,7 @@ mod tests {
     }
 
     impl Consumer<u64> for MultiplyY {
-        fn consume(&self, _: &u64) {
+        fn consume(&mut self, _: &u64) {
             let mut y = self.state.y.write().unwrap();
             *y *= 10;
             println!("Consumer Y processed item");
@@ -175,14 +176,22 @@ mod tests {
             y: RwLock::new(1),
         });
 
-        let consumers: Vec<Arc<dyn Consumer<u64>>> = vec![
-            Arc::new(MultiplyX::new(Arc::clone(&state))),
-            Arc::new(MultiplyY::new(Arc::clone(&state))),
-        ];
-
-        stream::iter(1..=5).broadcast(100, consumers).await;
+        let consumers = stream::iter(1..=5)
+            .broadcast(
+                100,
+                vec![
+                    Arc::new(Mutex::new(MultiplyX::new(Arc::clone(&state)))),
+                    Arc::new(Mutex::new(MultiplyY::new(Arc::clone(&state)))),
+                ],
+            )
+            .await;
 
         assert_eq!(*state.x.read().unwrap(), 3125);
         assert_eq!(*state.y.read().unwrap(), 100000);
+
+        stream::iter(1..=5).broadcast(100, consumers).await;
+
+        assert_eq!(*state.x.read().unwrap(), 9765625);
+        assert_eq!(*state.y.read().unwrap(), 10000000000);
     }
 }

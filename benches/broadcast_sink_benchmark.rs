@@ -2,7 +2,7 @@ use broadcast_sink::{Consumer, StreamBroadcastSinkExt};
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use futures::stream::{self, Stream};
 use std::sync::{Arc, RwLock};
-use tokio::runtime::Runtime;
+use tokio::{runtime::Runtime, sync::Mutex};
 
 #[derive(Debug)]
 struct State {
@@ -21,7 +21,7 @@ impl MultiplyX {
 }
 
 impl Consumer<u64> for MultiplyX {
-    fn consume(&self, _: &u64) {
+    fn consume(&mut self, _: &u64) {
         let mut x = self.state.x.write().unwrap();
         *x *= 5;
         println!("Consumer 1 processed item");
@@ -39,7 +39,7 @@ impl MultiplyY {
 }
 
 impl Consumer<u64> for MultiplyY {
-    fn consume(&self, _: &u64) {
+    fn consume(&mut self, _: &u64) {
         let mut y = self.state.y.write().unwrap();
         *y *= 10;
         println!("Consumer 2 processed item");
@@ -52,9 +52,9 @@ async fn batch(stream: impl Stream<Item = u64>) {
         y: RwLock::new(1),
     });
 
-    let consumers: Vec<Arc<dyn Consumer<u64>>> = vec![
-        Arc::new(MultiplyX::new(Arc::clone(&state))),
-        Arc::new(MultiplyY::new(Arc::clone(&state))),
+    let consumers: Vec<Arc<Mutex<dyn Consumer<u64>>>> = vec![
+        Arc::new(Mutex::new(MultiplyX::new(Arc::clone(&state)))),
+        Arc::new(Mutex::new(MultiplyY::new(Arc::clone(&state)))),
     ];
 
     let _ = stream.broadcast(100, consumers);
