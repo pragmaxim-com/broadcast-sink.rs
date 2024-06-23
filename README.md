@@ -17,6 +17,7 @@ in parallel. Note that consumers usually have some `State` or `Database` so they
 ```rust
 use futures::stream;
 use std::sync::{Arc, RwLock};
+use tokio::sync::Mutex;
 use broadcast_sink::{Consumer, StreamBroadcastSinkExt};
 
 #[derive(Debug)]
