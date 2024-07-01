@@ -21,10 +21,11 @@ impl MultiplyX {
 }
 
 impl Consumer<u64> for MultiplyX {
-    fn consume(&mut self, _: &u64) {
+    fn consume(&mut self, _: &u64) -> Result<(), &'static str> {
         let mut x = self.state.x.write().unwrap();
         *x *= 5;
         println!("Consumer 1 processed item");
+        Ok(())
     }
 }
 
@@ -39,10 +40,11 @@ impl MultiplyY {
 }
 
 impl Consumer<u64> for MultiplyY {
-    fn consume(&mut self, _: &u64) {
+    fn consume(&mut self, _: &u64) -> Result<(), &'static str> {
         let mut y = self.state.y.write().unwrap();
         *y *= 10;
         println!("Consumer 2 processed item");
+        Ok(())
     }
 }
 

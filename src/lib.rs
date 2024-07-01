@@ -5,6 +5,8 @@ extern crate doc_comment;
 #[cfg(test)]
 doctest!("../README.md");
 
+mod logger;
+
 use core::future::Future;
 use core::marker::PhantomPinned;
 use core::pin::Pin;
@@ -19,7 +21,7 @@ use tokio::task;
 use tokio_stream::wrappers::BroadcastStream;
 
 pub trait Consumer<T>: Send + Sync {
-    fn consume(&mut self, item: &T);
+    fn consume(&mut self, item: &T) -> Result<(), &'static str>;
 }
 
 pin_project! {
@@ -60,7 +62,9 @@ where
                 let mut stream = BroadcastStream::new(rx);
                 while let Some(Ok(item)) = stream.next().await {
                     let mut consumer = consumer.lock().await;
-                    consumer.consume(&item);
+                    if let Err(e) = consumer.consume(&item) {
+                        error!("BroadcastSink consumer error occurred: {:?}", e);
+                    }
                     barrier_clone.wait().await;
                     active_count_clone.fetch_sub(1, Ordering::SeqCst);
                 }
@@ -144,10 +148,11 @@ mod tests {
     }
 
     impl Consumer<u64> for MultiplyX {
-        fn consume(&mut self, _: &u64) {
+        fn consume(&mut self, _: &u64) -> Result<(), &'static str> {
             let mut x = self.state.x.write().unwrap();
             *x *= 5;
             println!("Consumer X processed item");
+            Ok(())
         }
     }
 
@@ -162,10 +167,11 @@ mod tests {
     }
 
     impl Consumer<u64> for MultiplyY {
-        fn consume(&mut self, _: &u64) {
+        fn consume(&mut self, _: &u64) -> Result<(), &'static str> {
             let mut y = self.state.y.write().unwrap();
             *y *= 10;
             println!("Consumer Y processed item");
+            Ok(())
         }
     }
 

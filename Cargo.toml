@@ -15,6 +15,7 @@ futures = { version = "0.3", features = ["async-await"] }
 tokio = { version = "1.38.0", features = ["full"] }
 tokio-stream = { version = "0.1.15", features = ["sync"] }
 pin-project-lite = "0.2"
+chrono = "0.4.38"
 
 [dev-dependencies]
 tokio = { version = "1.38.0", features = ["full"] }
