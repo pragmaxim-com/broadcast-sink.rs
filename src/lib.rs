@@ -25,6 +25,14 @@ pub struct BroadcastSinkError {
     message: String,
 }
 
+impl BroadcastSinkError {
+    pub fn new(message: &str) -> Self {
+        BroadcastSinkError {
+            message: message.to_string(),
+        }
+    }
+}
+
 pub trait Consumer<T>: Send + Sync {
     fn consume(&mut self, item: &T) -> Result<(), BroadcastSinkError>;
 }
