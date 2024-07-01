@@ -1,4 +1,4 @@
-use broadcast_sink::{Consumer, StreamBroadcastSinkExt};
+use broadcast_sink::{BroadcastSinkError, Consumer, StreamBroadcastSinkExt};
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use futures::stream::{self, Stream};
 use std::sync::{Arc, RwLock};
@@ -21,7 +21,7 @@ impl MultiplyX {
 }
 
 impl Consumer<u64> for MultiplyX {
-    fn consume(&mut self, _: &u64) -> Result<(), &'static str> {
+    fn consume(&mut self, _: &u64) -> Result<(), BroadcastSinkError> {
         let mut x = self.state.x.write().unwrap();
         *x *= 5;
         println!("Consumer 1 processed item");
@@ -40,7 +40,7 @@ impl MultiplyY {
 }
 
 impl Consumer<u64> for MultiplyY {
-    fn consume(&mut self, _: &u64) -> Result<(), &'static str> {
+    fn consume(&mut self, _: &u64) -> Result<(), BroadcastSinkError> {
         let mut y = self.state.y.write().unwrap();
         *y *= 10;
         println!("Consumer 2 processed item");

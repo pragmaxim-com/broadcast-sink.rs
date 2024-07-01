@@ -20,8 +20,13 @@ use tokio::sync::{broadcast, Barrier, Mutex};
 use tokio::task;
 use tokio_stream::wrappers::BroadcastStream;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BroadcastSinkError {
+    message: String,
+}
+
 pub trait Consumer<T>: Send + Sync {
-    fn consume(&mut self, item: &T) -> Result<(), &'static str>;
+    fn consume(&mut self, item: &T) -> Result<(), BroadcastSinkError>;
 }
 
 pin_project! {
@@ -63,7 +68,7 @@ where
                 while let Some(Ok(item)) = stream.next().await {
                     let mut consumer = consumer.lock().await;
                     if let Err(e) = consumer.consume(&item) {
-                        error!("BroadcastSink consumer error occurred: {:?}", e);
+                        error!("BroadcastSink consumer error occurred: {:?}", e.message);
                     }
                     barrier_clone.wait().await;
                     active_count_clone.fetch_sub(1, Ordering::SeqCst);
@@ -148,7 +153,7 @@ mod tests {
     }
 
     impl Consumer<u64> for MultiplyX {
-        fn consume(&mut self, _: &u64) -> Result<(), &'static str> {
+        fn consume(&mut self, _: &u64) -> Result<(), BroadcastSinkError> {
             let mut x = self.state.x.write().unwrap();
             *x *= 5;
             println!("Consumer X processed item");
@@ -167,7 +172,7 @@ mod tests {
     }
 
     impl Consumer<u64> for MultiplyY {
-        fn consume(&mut self, _: &u64) -> Result<(), &'static str> {
+        fn consume(&mut self, _: &u64) -> Result<(), BroadcastSinkError> {
             let mut y = self.state.y.write().unwrap();
             *y *= 10;
             println!("Consumer Y processed item");
