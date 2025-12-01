@@ -19,7 +19,7 @@ chrono = "0.4.38"
 
 [dev-dependencies]
 tokio = { version = "1.38.0", features = ["full"] }
-criterion = { version = "0.5.1", features = ["html_reports", "async_tokio"] }
+criterion = { version = "0.8.0", features = ["html_reports", "async_tokio"] }
 
 [dev-dependencies.doc-comment]
 version = "0.3"
